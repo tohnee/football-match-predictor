@@ -578,6 +578,14 @@ def build_team(raw: Dict[str, object]) -> Team:
 # 预先构造好的 Team 字典（按名称索引）
 TEAMS: Dict[str, Team] = {t["name"]: build_team(t) for t in TEAM_RAW}
 
+# 球队名称别名映射（赛程简称 -> 数据全称）
+TEAM_ALIASES: Dict[str, str] = {
+    "沙特": "沙特阿拉伯",
+    "美国": "美国",
+    "英国": "英格兰",
+    "刚果": "刚果(金)",
+}
+
 
 # ---------------------------------------------------------------------------
 # 小组赛分组（示意：A-H 组，每组 4 队）

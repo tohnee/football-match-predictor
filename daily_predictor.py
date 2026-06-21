@@ -7,10 +7,9 @@ daily_predictor.py - 每日比赛预测脚本
 2026世界杯比赛。
 
 时区处理:
-    - 比赛时间以美国/加拿大/墨西哥当地时间为准
-    - 转换为中国时间(UTC+8)输出
-    - 6月21日-7月19日世界杯期间，北美大部分地区比中国慢12-13小时
-      (中国晚上 = 北美早上; 中国凌晨 = 北美下午/晚上)
+    - 比赛时间以竞彩官方/实际开赛时间为准（北京时间）
+    - 直接按北京时间输出，无需时区转换
+    - 6月21日-7月19日世界杯期间，比赛多在北京时间凌晨到上午进行
 
 使用方式:
     python daily_predictor.py [--date YYYY-MM-DD]
@@ -32,62 +31,116 @@ from football_predictor.analysis.rating_engine import RatingEngine
 from football_predictor.analysis.momentum_engine import MomentumEngine
 from football_predictor.analysis.tactical_engine import TacticalEngine
 from football_predictor.analysis.prediction_engine import PredictionEngine
-# formatting utilities used inline
-from football_predictor.data.world_cup_2026 import TEAMS, get_tournament
+from football_predictor.data.world_cup_2026 import TEAMS, TEAM_ALIASES, get_tournament
 
 
 # ---------------------------------------------------------------------------
-# 2026世界杯实际赛程（北京时间）
-# 数据来源: FIFA官方赛程，北美时间 +12~13小时 = 北京时间
+# 2026世界杯实际赛程（北京时间，来源：竞彩官方/实际开赛时间）
 # ---------------------------------------------------------------------------
 # 格式: (日期, 北京时间, 主队, 客队, 球场, 城市)
 WORLD_CUP_SCHEDULE_BEIJING: List[Tuple[str, str, str, str, str, str]] = [
-    # === 6月21日 (已结束) ===
-    ("2026-06-21", "01:00", "荷兰", "瑞典", "Houston Stadium", "休斯顿"),
-    ("2026-06-21", "04:00", "德国", "科特迪瓦", "Toronto Stadium", "多伦多"),
-    ("2026-06-21", "08:00", "厄瓜多尔", "库拉索", "Kansas City Stadium", "堪萨斯城"),
-    ("2026-06-21", "12:00", "突尼斯", "日本", "BC Place Vancouver", "温哥华"),
+    # === 6月11日 ===
+    ("2026-06-11", "20:00", "墨西哥", "南非", "Mexico City Stadium", "墨西哥城"),
+    ("2026-06-11", "23:00", "韩国", "捷克", "Guadalajara Stadium", "瓜达拉哈拉"),
 
-    # === 6月22日 ===
-    ("2026-06-22", "01:00", "阿根廷", "奥地利", "Dallas Stadium", "达拉斯"),
-    ("2026-06-22", "04:00", "约旦", "阿尔及利亚", "San Francisco Bay Area Stadium", "旧金山湾区"),
-    ("2026-06-22", "08:00", "挪威", "塞内加尔", "New York New Jersey Stadium", "纽约/新泽西"),
-    ("2026-06-22", "12:00", "法国", "伊拉克", "Philadelphia Stadium", "费城"),
+    # === 6月12日 ===
+    ("2026-06-12", "02:00", "加拿大", "波黑", "Toronto Stadium", "多伦多"),
+    ("2026-06-12", "05:00", "美国", "巴拉圭", "Los Angeles Stadium", "洛杉矶"),
+
+    # === 6月13日 ===
+    ("2026-06-13", "02:00", "海地", "苏格兰", "Boston Stadium", "波士顿"),
+    ("2026-06-13", "05:00", "澳大利亚", "土耳其", "BC Place Vancouver", "温哥华"),
+    ("2026-06-13", "08:00", "巴西", "摩洛哥", "New York New Jersey Stadium", "纽约/新泽西"),
+    ("2026-06-13", "11:00", "卡塔尔", "瑞士", "San Francisco Bay Area Stadium", "旧金山湾区"),
+
+    # === 6月14日 ===
+    ("2026-06-14", "02:00", "科特迪瓦", "厄瓜多尔", "Philadelphia Stadium", "费城"),
+    ("2026-06-14", "05:00", "德国", "库拉索", "Houston Stadium", "休斯顿"),
+    ("2026-06-14", "08:00", "荷兰", "日本", "Dallas Stadium", "达拉斯"),
+    ("2026-06-14", "11:00", "瑞典", "突尼斯", "Estadio Monterrey", "蒙特雷"),
+
+    # === 6月15日 ===
+    ("2026-06-15", "02:00", "伊朗", "新西兰", "Los Angeles Stadium", "洛杉矶"),
+    ("2026-06-15", "05:00", "比利时", "埃及", "Seattle Stadium", "西雅图"),
+    ("2026-06-15", "08:00", "沙特", "乌拉圭", "Miami Stadium", "迈阿密"),
+    ("2026-06-15", "11:00", "西班牙", "佛得角", "Atlanta Stadium", "亚特兰大"),
+
+    # === 6月16日 ===
+    ("2026-06-16", "02:00", "法国", "塞内加尔", "New York New Jersey Stadium", "纽约/新泽西"),
+    ("2026-06-16", "05:00", "伊拉克", "挪威", "Boston Stadium", "波士顿"),
+    ("2026-06-16", "08:00", "阿根廷", "阿尔及利亚", "Kansas City Stadium", "堪萨斯城"),
+    ("2026-06-16", "11:00", "奥地利", "约旦", "San Francisco Bay Area Stadium", "旧金山湾区"),
+
+    # === 6月17日 ===
+    ("2026-06-17", "02:00", "葡萄牙", "刚果(金)", "Houston Stadium", "休斯顿"),
+    ("2026-06-17", "05:00", "乌兹别克斯坦", "哥伦比亚", "Mexico City Stadium", "墨西哥城"),
+    ("2026-06-17", "08:00", "加纳", "巴拿马", "Toronto Stadium", "多伦多"),
+    ("2026-06-17", "11:00", "英格兰", "克罗地亚", "Dallas Stadium", "达拉斯"),
+
+    # === 6月18日 ===
+    ("2026-06-18", "02:00", "捷克", "南非", "Atlanta Stadium", "亚特兰大"),
+    ("2026-06-18", "05:00", "瑞士", "波黑", "Los Angeles Stadium", "洛杉矶"),
+    ("2026-06-18", "08:00", "加拿大", "卡塔尔", "BC Place Vancouver", "温哥华"),
+    ("2026-06-18", "11:00", "墨西哥", "韩国", "Guadalajara Stadium", "瓜达拉哈拉"),
+
+    # === 6月19日 ===
+    ("2026-06-19", "02:00", "巴西", "海地", "Philadelphia Stadium", "费城"),
+    ("2026-06-19", "05:00", "苏格兰", "摩洛哥", "Boston Stadium", "波士顿"),
+    ("2026-06-19", "08:00", "土耳其", "巴拉圭", "San Francisco Bay Area Stadium", "旧金山湾区"),
+    ("2026-06-19", "11:00", "美国", "澳大利亚", "Seattle Stadium", "西雅图"),
+
+    # === 6月20日 ===
+    ("2026-06-20", "02:00", "德国", "科特迪瓦", "Toronto Stadium", "多伦多"),
+    ("2026-06-20", "05:00", "厄瓜多尔", "库拉索", "Kansas City Stadium", "堪萨斯城"),
+    ("2026-06-20", "08:00", "荷兰", "瑞典", "Houston Stadium", "休斯顿"),
+    ("2026-06-20", "11:00", "突尼斯", "日本", "BC Place Vancouver", "温哥华"),
+
+    # === 6月21日（今晚）===
+    ("2026-06-21", "00:00", "西班牙", "沙特", "Atlanta Stadium", "亚特兰大"),
+    ("2026-06-21", "03:00", "比利时", "伊朗", "Los Angeles Stadium", "洛杉矶"),
+    ("2026-06-21", "06:00", "乌拉圭", "佛得角", "Miami Stadium", "迈阿密"),
+    ("2026-06-21", "09:00", "新西兰", "埃及", "BC Place Vancouver", "温哥华"),
+
+    # === 6月22日（明天）===
+    ("2026-06-22", "00:00", "阿根廷", "奥地利", "Dallas Stadium", "达拉斯"),
+    ("2026-06-22", "03:00", "约旦", "阿尔及利亚", "San Francisco Bay Area Stadium", "旧金山湾区"),
+    ("2026-06-22", "06:00", "挪威", "塞内加尔", "New York New Jersey Stadium", "纽约/新泽西"),
+    ("2026-06-22", "09:00", "法国", "伊拉克", "Philadelphia Stadium", "费城"),
 
     # === 6月23日 ===
-    ("2026-06-23", "01:00", "葡萄牙", "乌兹别克斯坦", "Houston Stadium", "休斯顿"),
-    ("2026-06-23", "04:00", "哥伦比亚", "刚果(金)", "Guadalajara Stadium", "瓜达拉哈拉"),
-    ("2026-06-23", "08:00", "英格兰", "加纳", "Boston Stadium", "波士顿"),
-    ("2026-06-23", "12:00", "巴拿马", "克罗地亚", "Toronto Stadium", "多伦多"),
+    ("2026-06-23", "00:00", "葡萄牙", "乌兹别克斯坦", "Houston Stadium", "休斯顿"),
+    ("2026-06-23", "03:00", "哥伦比亚", "刚果(金)", "Guadalajara Stadium", "瓜达拉哈拉"),
+    ("2026-06-23", "06:00", "英格兰", "加纳", "Boston Stadium", "波士顿"),
+    ("2026-06-23", "09:00", "巴拿马", "克罗地亚", "Toronto Stadium", "多伦多"),
 
     # === 6月24日 ===
-    ("2026-06-24", "01:00", "瑞士", "加拿大", "BC Place Vancouver", "温哥华"),
-    ("2026-06-24", "04:00", "波黑", "卡塔尔", "Seattle Stadium", "西雅图"),
-    ("2026-06-24", "08:00", "苏格兰", "巴西", "Miami Stadium", "迈阿密"),
-    ("2026-06-24", "12:00", "摩洛哥", "海地", "Atlanta Stadium", "亚特兰大"),
+    ("2026-06-24", "00:00", "瑞士", "加拿大", "BC Place Vancouver", "温哥华"),
+    ("2026-06-24", "03:00", "波黑", "卡塔尔", "Seattle Stadium", "西雅图"),
+    ("2026-06-24", "06:00", "苏格兰", "巴西", "Miami Stadium", "迈阿密"),
+    ("2026-06-24", "09:00", "摩洛哥", "海地", "Atlanta Stadium", "亚特兰大"),
 
     # === 6月25日 ===
-    ("2026-06-25", "01:00", "库拉索", "科特迪瓦", "Philadelphia Stadium", "费城"),
-    ("2026-06-25", "04:00", "厄瓜多尔", "德国", "New York New Jersey Stadium", "纽约/新泽西"),
-    ("2026-06-25", "08:00", "日本", "瑞典", "Dallas Stadium", "达拉斯"),
-    ("2026-06-25", "12:00", "突尼斯", "荷兰", "Kansas City Stadium", "堪萨斯城"),
+    ("2026-06-25", "00:00", "库拉索", "科特迪瓦", "Philadelphia Stadium", "费城"),
+    ("2026-06-25", "03:00", "厄瓜多尔", "德国", "New York New Jersey Stadium", "纽约/新泽西"),
+    ("2026-06-25", "06:00", "日本", "瑞典", "Dallas Stadium", "达拉斯"),
+    ("2026-06-25", "09:00", "突尼斯", "荷兰", "Kansas City Stadium", "堪萨斯城"),
 
     # === 6月26日 ===
-    ("2026-06-26", "01:00", "乌拉圭", "西班牙", "Guadalajara Stadium", "瓜达拉哈拉"),
-    ("2026-06-26", "04:00", "佛得角", "沙特", "Houston Stadium", "休斯顿"),
-    ("2026-06-26", "08:00", "埃及", "伊朗", "Seattle Stadium", "西雅图"),
-    ("2026-06-26", "12:00", "新西兰", "比利时", "BC Place Vancouver", "温哥华"),
+    ("2026-06-26", "00:00", "乌拉圭", "西班牙", "Guadalajara Stadium", "瓜达拉哈拉"),
+    ("2026-06-26", "03:00", "佛得角", "沙特", "Houston Stadium", "休斯顿"),
+    ("2026-06-26", "06:00", "埃及", "伊朗", "Seattle Stadium", "西雅图"),
+    ("2026-06-26", "09:00", "新西兰", "比利时", "BC Place Vancouver", "温哥华"),
 
     # === 6月27日 ===
-    ("2026-06-27", "01:00", "阿尔及利亚", "奥地利", "Kansas City Stadium", "堪萨斯城"),
-    ("2026-06-27", "04:00", "约旦", "阿根廷", "Dallas Stadium", "达拉斯"),
-    ("2026-06-27", "08:00", "哥伦比亚", "葡萄牙", "Miami Stadium", "迈阿密"),
-    ("2026-06-27", "12:00", "刚果(金)", "乌兹别克斯坦", "Atlanta Stadium", "亚特兰大"),
+    ("2026-06-27", "00:00", "阿尔及利亚", "奥地利", "Kansas City Stadium", "堪萨斯城"),
+    ("2026-06-27", "03:00", "约旦", "阿根廷", "Dallas Stadium", "达拉斯"),
+    ("2026-06-27", "06:00", "哥伦比亚", "葡萄牙", "Miami Stadium", "迈阿密"),
+    ("2026-06-27", "09:00", "刚果(金)", "乌兹别克斯坦", "Atlanta Stadium", "亚特兰大"),
     ("2026-06-27", "20:00", "克罗地亚", "加纳", "Philadelphia Stadium", "费城"),
     ("2026-06-27", "22:00", "巴拿马", "英格兰", "New York New Jersey Stadium", "纽约/新泽西"),
 
     # === 6月28日 - 淘汰赛开始 ===
-    ("2026-06-28", "01:00", "A组第二", "B组第二", "Los Angeles Stadium", "洛杉矶"),
+    ("2026-06-28", "03:00", "A组第二", "B组第二", "Los Angeles Stadium", "洛杉矶"),
 
     # === 6月29日 ===
     ("2026-06-29", "01:00", "E组第一", "A/B/C/D/F组第三", "Boston Stadium", "波士顿"),
@@ -161,26 +214,22 @@ def get_matches_for_period(
     period: str = "tonight_early_morning_morning"
 ) -> List[Tuple[str, str, str, str, str, str]]:
     """
-    获取指定日期"夜晚+次日凌晨+次日上午"的比赛。
+    获取指定日期"今天+明天"的比赛。
 
-    定义（北京时间）:
-        - "今天夜晚": 18:00 - 23:59 (base_date)
-        - "次日凌晨": 00:00 - 05:59 (base_date + 1天)
-        - "次日上午": 06:00 - 12:00 (base_date + 1天)
-
-    注意: 世界杯期间北美比赛多在北美当地时间下午/晚上进行，
-          对应北京时间次日凌晨到上午。
+    世界杯期间比赛均在北京时间凌晨到上午进行（00:00-12:00）。
+    定时任务每晚18:00运行时，"今天"的比赛指 base_date 当天 00:00-12:00 的场次，
+    "明天"的比赛指 base_date + 1 天 00:00-12:00 的场次。
     """
     matches: List[Tuple[str, str, str, str, str, str]] = []
 
-    # 今天夜晚的比赛 (base_date, 18:00-23:59)
+    # "今天"的比赛 (base_date, 00:00-12:00)
     for d, t, h, a, v, c in WORLD_CUP_SCHEDULE_BEIJING:
         match_date = datetime.strptime(d, "%Y-%m-%d").date()
         hour = _parse_time(t)
-        if match_date == base_date and 18 <= hour <= 23:
+        if match_date == base_date and 0 <= hour <= 12:
             matches.append((d, t, h, a, v, c))
 
-    # 次日凌晨 + 上午的比赛 (base_date + 1, 00:00-12:00)
+    # "明天"的比赛 (base_date + 1, 00:00-12:00)
     next_day = base_date + timedelta(days=1)
     for d, t, h, a, v, c in WORLD_CUP_SCHEDULE_BEIJING:
         match_date = datetime.strptime(d, "%Y-%m-%d").date()
@@ -202,9 +251,9 @@ def predict_match(home_name: str, away_name: str) -> dict:
             "note": "淘汰赛对阵尚未确定，无法预测",
         }
 
-    # 获取球队对象
-    home = TEAMS.get(home_name)
-    away = TEAMS.get(away_name)
+    # 获取球队对象（支持别名）
+    home = TEAMS.get(home_name) or TEAMS.get(TEAM_ALIASES.get(home_name, ""))
+    away = TEAMS.get(away_name) or TEAMS.get(TEAM_ALIASES.get(away_name, ""))
 
     if home is None or away is None:
         return {
@@ -251,7 +300,7 @@ def generate_report(base_date: date) -> str:
     lines.append("=" * 70)
     lines.append("  2026 美加墨世界杯 - 每日比赛预测报告")
     lines.append(f"  生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (北京时间)")
-    lines.append(f"  预测范围: {base_date.strftime('%Y-%m-%d')} 夜晚 → {base_date + timedelta(days=1)} 上午")
+    lines.append(f"  预测范围: {base_date.strftime('%Y-%m-%d')} (今天) + {base_date + timedelta(days=1)} (明天)")
     lines.append("=" * 70)
     lines.append("")
 
