@@ -201,12 +201,23 @@ WORLD_CUP_SCHEDULE_BEIJING: List[Tuple[str, str, str, str, str, str]] = [
 RATING = RatingEngine()
 MOMENTUM = MomentumEngine()
 TACTICAL = TacticalEngine()
-PREDICTION = PredictionEngine()
+# 默认引擎（淘汰赛模式）
+PREDICTION_KO = PredictionEngine(rating_engine=RATING, tactical_engine=TACTICAL, momentum_engine=MOMENTUM, group_stage=False)
+# 小组赛引擎（激进模式）
+PREDICTION_GROUP = PredictionEngine(rating_engine=RATING, tactical_engine=TACTICAL, momentum_engine=MOMENTUM, group_stage=True)
 
 
 def _parse_time(time_str: str) -> int:
     """将 'HH:MM' 转为小时整数。"""
     return int(time_str.split(":")[0])
+
+
+def is_group_stage(match_date_str: str) -> bool:
+    """根据日期判断是否为小组赛阶段（6月11日 - 6月27日）。"""
+    match_date = datetime.strptime(match_date_str, "%Y-%m-%d").date()
+    group_start = date(2026, 6, 11)
+    group_end = date(2026, 6, 27)
+    return group_start <= match_date <= group_end
 
 
 def get_matches_for_period(
@@ -240,8 +251,14 @@ def get_matches_for_period(
     return matches
 
 
-def predict_match(home_name: str, away_name: str) -> dict:
-    """对一场比赛进行预测，返回结构化结果。"""
+def predict_match(home_name: str, away_name: str, match_date_str: str = "") -> dict:
+    """对一场比赛进行预测，返回结构化结果。
+
+    Args:
+        home_name: 主队名称
+        away_name: 客队名称
+        match_date_str: 比赛日期 (YYYY-MM-DD)，用于判断小组赛/淘汰赛
+    """
     # 处理占位符（淘汰赛阶段）
     if "胜者" in home_name or "负者" in home_name or "组" in home_name:
         return {
@@ -263,8 +280,11 @@ def predict_match(home_name: str, away_name: str) -> dict:
             "note": f"球队数据缺失: {home_name if home is None else away_name}",
         }
 
+    # 根据日期选择引擎：小组赛用激进模式，淘汰赛用保守模式
+    engine = PREDICTION_GROUP if (match_date_str and is_group_stage(match_date_str)) else PREDICTION_KO
+
     # 执行预测
-    prediction = PREDICTION.predict_match(home, away, neutral=True)
+    prediction = engine.predict_match(home, away, neutral=True)
     result = prediction.data
 
     # 格式化输出
@@ -324,8 +344,8 @@ def generate_report(base_date: date) -> str:
             lines.append(f"  📅 {d} {weekday}")
             lines.append(f"{'─' * 70}")
 
-        # 预测
-        pred = predict_match(h, a)
+        # 预测（传入日期以判断小组赛/淘汰赛）
+        pred = predict_match(h, a, match_date_str=d)
 
         if pred["status"] == "placeholder":
             lines.append(f"\n  ⏰ {t}  {h} vs {a}")

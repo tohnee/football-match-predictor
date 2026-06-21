@@ -46,10 +46,21 @@ BASE_AWAY_GOALS = 1.18
 # 中立场地基准
 BASE_NEUTRAL_GOALS = 1.30
 
+# 小组赛阶段激进参数
+GROUP_STAGE_NEUTRAL_GOALS = 1.65       # 小组赛基础 lambda 更高
+GROUP_STAGE_RATING_MULTIPLIER = 0.14   # 评分差影响更大
+GROUP_STAGE_DOMINATION_THRESHOLD = 1.5  # 评分差超过此值触发碾压系数
+GROUP_STAGE_DOMINATION_BOOST = 0.25    # 碾压系数：强队 lambda 额外加成
+
 
 @dataclass
 class PredictionEngine:
-    """比分预测引擎。"""
+    """比分预测引擎。
+
+    支持阶段化预测策略：
+        - group_stage=True: 小组赛模式，lambda 更激进，强队碾压效应放大
+        - group_stage=False: 淘汰赛/决赛模式，保持保守稳定
+    """
 
     rating_engine: Optional[RatingEngine] = None
     tactical_engine: Optional[TacticalEngine] = None
@@ -59,6 +70,8 @@ class PredictionEngine:
     base_neutral_goals: float = BASE_NEUTRAL_GOALS
     # 评分差每增加 1 分，进球 lambda 乘数增加
     rating_multiplier: float = 0.10
+    # 阶段标记：小组赛 = True，淘汰赛/决赛 = False
+    group_stage: bool = False
 
     # ------------------------------------------------------------------
     def __post_init__(self) -> None:
@@ -77,7 +90,10 @@ class PredictionEngine:
     # ------------------------------------------------------------------
     def _base_lambda(self, home: Team, away: Team, neutral: bool
                     ) -> Tuple[float, float]:
-        """根据 Elo 与历史场均进球，计算基础 lambda。"""
+        """根据 Elo 与历史场均进球，计算基础 lambda。
+
+        小组赛阶段使用更高的基础 lambda，让比赛更开放。
+        """
         # Elo 胜率差异
         elo_diff = home.elo_rating - away.elo_rating
         win_p_home = elo_win_probability(elo_diff)  # 主队胜率（理论）
@@ -92,12 +108,19 @@ class PredictionEngine:
         elo_factor_h = 0.6 + 0.8 * win_p_home  # 0.6 ~ 1.4
         elo_factor_a = 0.6 + 0.8 * win_p_away
 
+        # 小组赛阶段使用更高的基础 lambda
+        base_h = GROUP_STAGE_NEUTRAL_GOALS if (self.group_stage and neutral) else self.base_home_goals
+        base_a = GROUP_STAGE_NEUTRAL_GOALS if (self.group_stage and neutral) else self.base_away_goals
+        if not self.group_stage and neutral:
+            base_h = self.base_neutral_goals
+            base_a = self.base_neutral_goals
+
         if neutral:
-            lam_h = self.base_neutral_goals * elo_factor_h
-            lam_a = self.base_neutral_goals * elo_factor_a
+            lam_h = base_h * elo_factor_h
+            lam_a = base_a * elo_factor_a
         else:
-            lam_h = self.base_home_goals * elo_factor_h
-            lam_a = self.base_away_goals * elo_factor_a
+            lam_h = base_h * elo_factor_h
+            lam_a = base_a * elo_factor_a
 
         # 再与近期场均进球做加权平均（如果有数据的话）
         if home.recent_goals_for:
@@ -111,14 +134,30 @@ class PredictionEngine:
     def _apply_rating_adjustment(self, lam_h: float, lam_a: float,
                                 home_rating: float, away_rating: float
                                 ) -> Tuple[float, float]:
-        """根据 1-10 评分差对 lambda 做缩放修正。"""
+        """根据 1-10 评分差对 lambda 做缩放修正。
+
+        小组赛阶段：评分差影响更大，且强队获得额外碾压加成。
+        """
         diff = home_rating - away_rating  # 范围约 [-9, +9]
+        # 小组赛使用更大的 rating_multiplier
+        multiplier = GROUP_STAGE_RATING_MULTIPLIER if self.group_stage else self.rating_multiplier
+
         # 映射到 [0.7, 1.5] 左右的乘法因子
-        factor_h = 1.0 + diff * self.rating_multiplier / 5.0
-        factor_a = 1.0 - diff * self.rating_multiplier / 5.0
+        factor_h = 1.0 + diff * multiplier / 5.0
+        factor_a = 1.0 - diff * multiplier / 5.0
         factor_h = clamp(factor_h, 0.5, 1.8)
         factor_a = clamp(factor_a, 0.5, 1.8)
-        return round(lam_h * factor_h, 4), round(lam_a * factor_a, 4)
+
+        lam_h = lam_h * factor_h
+        lam_a = lam_a * factor_a
+
+        # 小组赛碾压系数：评分差足够大时，强队 lambda 进一步放大
+        if self.group_stage and diff >= GROUP_STAGE_DOMINATION_THRESHOLD:
+            lam_h = lam_h * (1.0 + GROUP_STAGE_DOMINATION_BOOST)
+        if self.group_stage and diff <= -GROUP_STAGE_DOMINATION_THRESHOLD:
+            lam_a = lam_a * (1.0 + GROUP_STAGE_DOMINATION_BOOST)
+
+        return round(lam_h, 4), round(lam_a, 4)
 
     # ------------------------------------------------------------------
     def _apply_tactical_bias(self, lam_h: float, lam_a: float,
