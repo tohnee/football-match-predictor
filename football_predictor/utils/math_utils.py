@@ -134,8 +134,13 @@ def outcome_probabilities(lam_h: float, lam_a: float,
 # ---------------------------------------------------------------------------
 def most_probable_scoreline(lam_h: float, lam_a: float,
                             top_n: int = 5,
-                            max_goals: int = 8) -> List[Tuple[int, int, float]]:
+                            max_goals: int = 8,
+                            dc_rho: float = 0.0) -> List[Tuple[int, int, float]]:
     """返回最可能的 top_n 个比分，按概率降序。
+
+    Args:
+        dc_rho: Dixon-Coles 修正参数。当 > 0 时，对低比分（0-0, 1-0, 0-1, 1-1）
+                应用修正因子 τ，更符合足球实际。
 
     Returns:
         List[(home_goals, away_goals, probability)]
@@ -149,9 +154,66 @@ def most_probable_scoreline(lam_h: float, lam_a: float,
             pa = poisson_pmf(a, lam_a)
             if pa < 1e-5:
                 continue
-            results.append((h, a, ph * pa))
+            p = ph * pa
+            # Dixon-Coles 低比分修正
+            if dc_rho > 0:
+                p *= _dixon_coles_tau(h, a, lam_h, lam_a, dc_rho)
+            results.append((h, a, p))
+    # 归一化（Dixon-Coles 修正后概率不再和为1）
+    total = sum(r[2] for r in results)
+    if total > 0:
+        results = [(h, a, p / total) for h, a, p in results]
     results.sort(key=lambda t: t[2], reverse=True)
     return results[:top_n]
+
+
+# ---------------------------------------------------------------------------
+def _dixon_coles_tau(h: int, a: int, lam_h: float, lam_a: float,
+                     rho: float) -> float:
+    """Dixon-Coles 低比分修正因子 τ。
+
+    当双方进球都 <= 1 时，根据 lambda 大小调整概率：
+    - 0-0: τ = 1 - lam_h * lam_a * rho （增大）
+    - 1-0: τ = 1 + lam_a * rho         （增大）
+    - 0-1: τ = 1 + lam_h * rho         （增大）
+    - 1-1: τ = 1 - rho                 （减小）
+
+    rho 通常取 0.01 ~ 0.05。
+    """
+    if h == 0 and a == 0:
+        return 1.0 - lam_h * lam_a * rho
+    elif h == 0 and a == 1:
+        return 1.0 + lam_h * rho
+    elif h == 1 and a == 0:
+        return 1.0 + lam_a * rho
+    elif h == 1 and a == 1:
+        return 1.0 - rho
+    return 1.0
+
+
+# ---------------------------------------------------------------------------
+def outcome_probabilities_dc(lam_h: float, lam_a: float,
+                             dc_rho: float = 0.0,
+                             max_goals: int = 8) -> Tuple[float, float, float]:
+    """带 Dixon-Coles 修正的胜负平概率。"""
+    home_w, draw, away_w = 0.0, 0.0, 0.0
+    for h in range(max_goals + 1):
+        ph = poisson_pmf(h, lam_h)
+        for a in range(max_goals + 1):
+            pa = poisson_pmf(a, lam_a)
+            joint = ph * pa
+            if dc_rho > 0:
+                joint *= _dixon_coles_tau(h, a, lam_h, lam_a, dc_rho)
+            if h > a:
+                home_w += joint
+            elif h < a:
+                away_w += joint
+            else:
+                draw += joint
+    total = home_w + draw + away_w
+    if total <= 0:
+        return 0.333, 0.334, 0.333
+    return home_w / total, draw / total, away_w / total
 
 
 # ---------------------------------------------------------------------------

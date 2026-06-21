@@ -77,6 +77,10 @@ class Team:
         home_advantage_factor: 主场优势加成系数（默认 1.04，中性场地时忽略）。
         recent_goals_for:      最近几场比赛的进球数列表（用于进球模型）。
         recent_goals_against:  最近几场比赛的失球数列表（用于进球模型）。
+        style:                 球队战术风格，可选值："possession"（控球主导）、
+                               "counter"（防守反击）、"pressing"（高位压迫）、
+                               "park_bus"（铁桶阵）、"direct"（直接进攻）、
+                               "wing_play"（边路进攻）；空字符串表示未指定。
     """
 
     name: str
@@ -91,6 +95,7 @@ class Team:
     home_advantage_factor: float = 1.04
     recent_goals_for: List[int] = field(default_factory=list)
     recent_goals_against: List[int] = field(default_factory=list)
+    style: str = ""
 
     # 内部常量 —— 用于评分归一化
     _MAX_ELO: float = 2200.0

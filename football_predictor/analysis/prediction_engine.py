@@ -1,23 +1,24 @@
 """
-analysis/prediction_engine.py - 比分预测引擎
-===============================================
+analysis/prediction_engine.py - 比分预测引擎 v4.0
+=====================================================
 
-基于 Poisson 分布的进球模型，结合实力差、主客场与动量修正，
-生成概率区间而非单点预测。
+v4.0 重大更新：
+    1. [P0-1] 修复 Elo 双重计算：_base_lambda 不再使用 Elo 因子，
+       实力差完全由评分引擎的 rating_adjustment 处理
+    2. [P1-1] 引入防守建模：lambda 计算同时考虑进攻方场均进球
+       和防守方场均失球
+    3. [P2-1] 引入 Dixon-Coles 低比分修正：0-0/1-0/0-1 概率被
+       适当提升，更符合足球实际
+    4. [P2-2] 小组赛轮次效应：第1轮保守、第2轮正常、第3轮开放
+    5. [新增] 环境与心理引擎：海拔、气候、旅行疲劳、教练压力、
+       球员士气、赛事阶段压力、外界期望
 
 核心流程:
-    1. 根据双方 Elo 计算基础强度系数 lambda_h, lambda_a
-    2. 根据近期场均进球进行校准
-    3. 根据 Rating Engine 评分差修正（scaling）
-    4. 调用 Poisson 分布计算胜/平/负、最可能比分与大小球概率
-    5. 输出概率区间（置信区间）
-
-使用示例:
-    >>> from football_predictor.analysis.prediction_engine import PredictionEngine
-    >>> engine = PredictionEngine()
-    >>> result = engine.predict_score(home_team, away_team)
-    >>> print(result["most_probable"])  # (2, 1)
-    >>> print(result["home_win"])       # 0.48
+    1. 基础 lambda = 加权(球队进攻力, 对手防守力) * 阶段系数
+    2. 评分引擎修正（rating diff → lambda scaling + 碾压系数）
+    3. 战术微调
+    4. 环境与心理修正
+    5. Dixon-Coles Poisson 分布计算比分概率
 """
 
 from __future__ import annotations
@@ -29,49 +30,67 @@ from football_predictor.models.team import Team
 from football_predictor.analysis.rating_engine import RatingEngine
 from football_predictor.analysis.tactical_engine import TacticalEngine
 from football_predictor.analysis.momentum_engine import MomentumEngine
+from football_predictor.analysis.environment_engine import EnvironmentEngine
 from football_predictor.utils.math_utils import (
     poisson_pmf,
     outcome_probabilities,
+    outcome_probabilities_dc,
     most_probable_scoreline,
     over_under_probability,
-    elo_win_probability,
     clamp,
-    lerp,
 )
 
 
-# 世界平均主队进球（作为 lambda 基准）
-BASE_HOME_GOALS = 1.45
-BASE_AWAY_GOALS = 1.18
-# 中立场地基准
-BASE_NEUTRAL_GOALS = 1.30
+# ---------------------------------------------------------------------------
+# 基础参数
+# ---------------------------------------------------------------------------
+# 中立场地基准（淘汰赛/决赛）
+BASE_NEUTRAL_GOALS = 1.35
+# 小组赛基础 lambda（更开放）
+GROUP_STAGE_NEUTRAL_GOALS = 1.60
 
-# 小组赛阶段激进参数
-GROUP_STAGE_NEUTRAL_GOALS = 1.65       # 小组赛基础 lambda 更高
-GROUP_STAGE_RATING_MULTIPLIER = 0.14   # 评分差影响更大
-GROUP_STAGE_DOMINATION_THRESHOLD = 1.5  # 评分差超过此值触发碾压系数
-GROUP_STAGE_DOMINATION_BOOST = 0.25    # 碾压系数：强队 lambda 额外加成
+# 评分差 → lambda 乘数
+RATING_MULTIPLIER_KO = 0.12       # 淘汰赛
+RATING_MULTIPLIER_GROUP = 0.16    # 小组赛
+
+# 碾压系数
+DOMINATION_THRESHOLD = 1.5
+DOMINATION_BOOST = 0.25
+
+# Dixon-Coles 修正参数
+DC_RHO = 0.03
+
+# 小组赛轮次系数
+GROUP_ROUND_MULTIPLIER = {
+    1: 0.90,   # 第1轮：试探，偏保守
+    2: 1.00,   # 第2轮：正常
+    3: 1.10,   # 第3轮：已出线轮换/已淘汰放手一搏，更开放
+}
 
 
 @dataclass
 class PredictionEngine:
-    """比分预测引擎。
+    """比分预测引擎 v4.0。
 
     支持阶段化预测策略：
         - group_stage=True: 小组赛模式，lambda 更激进，强队碾压效应放大
         - group_stage=False: 淘汰赛/决赛模式，保持保守稳定
+
+    新增参数：
+        - group_round: 小组赛轮次 (1/2/3)，影响 lambda 系数
+        - dc_rho: Dixon-Coles 修正参数
+        - environment_engine: 环境与心理引擎
     """
 
     rating_engine: Optional[RatingEngine] = None
     tactical_engine: Optional[TacticalEngine] = None
     momentum_engine: Optional[MomentumEngine] = None
-    base_home_goals: float = BASE_HOME_GOALS
-    base_away_goals: float = BASE_AWAY_GOALS
-    base_neutral_goals: float = BASE_NEUTRAL_GOALS
-    # 评分差每增加 1 分，进球 lambda 乘数增加
-    rating_multiplier: float = 0.10
-    # 阶段标记：小组赛 = True，淘汰赛/决赛 = False
+    environment_engine: Optional[EnvironmentEngine] = None
+    # 阶段标记
     group_stage: bool = False
+    group_round: int = 2  # 小组赛轮次 1/2/3
+    # Dixon-Coles 参数
+    dc_rho: float = DC_RHO
 
     # ------------------------------------------------------------------
     def __post_init__(self) -> None:
@@ -84,65 +103,67 @@ class PredictionEngine:
             self.tactical_engine = self.rating_engine.tactical_engine
         if self.momentum_engine is None:
             self.momentum_engine = self.rating_engine.momentum_engine
+        if self.environment_engine is None:
+            self.environment_engine = EnvironmentEngine()
 
     # ------------------------------------------------------------------
-    # 基础 lambda 计算
+    # [P0-1 + P1-1] 基础 lambda 计算（不再使用 Elo 因子，引入防守建模）
     # ------------------------------------------------------------------
     def _base_lambda(self, home: Team, away: Team, neutral: bool
                     ) -> Tuple[float, float]:
-        """根据 Elo 与历史场均进球，计算基础 lambda。
+        """计算基础 lambda。
 
-        小组赛阶段使用更高的基础 lambda，让比赛更开放。
+        v4.0 改进：
+        1. 不再使用 Elo 因子（避免与评分引擎双重计算）
+        2. 引入防守建模：主队 lambda = 进攻力 + 对手防守弱点
+        3. 小组赛轮次系数
         """
-        # Elo 胜率差异
-        elo_diff = home.elo_rating - away.elo_rating
-        win_p_home = elo_win_probability(elo_diff)  # 主队胜率（理论）
-        win_p_away = 1.0 - win_p_home
+        # 球队进攻力：近期场均进球
+        h_gf, h_ga = home.avg_goals_per_game()
+        a_gf, a_ga = away.avg_goals_per_game()
 
-        # 取近期场均进球作为校准
-        h_gf, _ = home.avg_goals_per_game()
-        a_ga_unused = 0.0
-        _, a_gf = away.avg_goals_per_game()  # type: ignore[assignment]
-        # 客队防守实力：主队进球参考 away 的失球平均
-        # 这里我们用一种启发式：主队 lambda = Elo 因子 * base_goals
-        elo_factor_h = 0.6 + 0.8 * win_p_home  # 0.6 ~ 1.4
-        elo_factor_a = 0.6 + 0.8 * win_p_away
-
-        # 小组赛阶段使用更高的基础 lambda
-        base_h = GROUP_STAGE_NEUTRAL_GOALS if (self.group_stage and neutral) else self.base_home_goals
-        base_a = GROUP_STAGE_NEUTRAL_GOALS if (self.group_stage and neutral) else self.base_away_goals
-        if not self.group_stage and neutral:
-            base_h = self.base_neutral_goals
-            base_a = self.base_neutral_goals
-
-        if neutral:
-            lam_h = base_h * elo_factor_h
-            lam_a = base_a * elo_factor_a
+        # 基础进球期望（不再用 Elo 因子）
+        if self.group_stage:
+            base = GROUP_STAGE_NEUTRAL_GOALS
+            # 小组赛轮次系数
+            round_mult = GROUP_ROUND_MULTIPLIER.get(self.group_round, 1.0)
+            base *= round_mult
         else:
-            lam_h = base_h * elo_factor_h
-            lam_a = base_a * elo_factor_a
+            base = BASE_NEUTRAL_GOALS if neutral else 1.45
 
-        # 再与近期场均进球做加权平均（如果有数据的话）
-        if home.recent_goals_for:
-            lam_h = 0.6 * lam_h + 0.4 * h_gf
-        if away.recent_goals_for:
-            lam_a = 0.6 * lam_a + 0.4 * a_gf  # type: ignore[arg-type]
+        # [P1-1] 防守建模：
+        # 主队 lambda = 0.5 * base + 0.3 * 主队进攻力 + 0.2 * 客队防守弱点
+        # 客队 lambda = 0.5 * base + 0.3 * 客队进攻力 + 0.2 * 主队防守弱点
+        #
+        # 防守弱点 = 对手场均失球 / 1.5（归一化，1.5为平均失球）
+        # 防守弱点 > 1 表示对手防守差，进球期望增加
+        h_attack_factor = h_gf / 1.3   # 主队进攻力（1.3为平均进球）
+        a_defense_weak = a_ga / 1.3    # 客队防守弱点
+        a_attack_factor = a_gf / 1.3   # 客队进攻力
+        h_defense_weak = h_ga / 1.3    # 主队防守弱点
+
+        lam_h = 0.5 * base + 0.3 * base * h_attack_factor + 0.2 * base * a_defense_weak
+        lam_a = 0.5 * base + 0.3 * base * a_attack_factor + 0.2 * base * h_defense_weak
+
+        # 确保最小值
+        lam_h = max(0.3, lam_h)
+        lam_a = max(0.2, lam_a)
 
         return round(lam_h, 4), round(lam_a, 4)
 
     # ------------------------------------------------------------------
+    # 评分修正（含碾压系数）
+    # ------------------------------------------------------------------
     def _apply_rating_adjustment(self, lam_h: float, lam_a: float,
                                 home_rating: float, away_rating: float
                                 ) -> Tuple[float, float]:
-        """根据 1-10 评分差对 lambda 做缩放修正。
+        """根据评分差对 lambda 做缩放修正。
 
-        小组赛阶段：评分差影响更大，且强队获得额外碾压加成。
+        这是唯一使用实力差的地方（P0-1 修复：不再在 _base_lambda 中用 Elo）。
         """
-        diff = home_rating - away_rating  # 范围约 [-9, +9]
-        # 小组赛使用更大的 rating_multiplier
-        multiplier = GROUP_STAGE_RATING_MULTIPLIER if self.group_stage else self.rating_multiplier
+        diff = home_rating - away_rating
+        multiplier = RATING_MULTIPLIER_GROUP if self.group_stage else RATING_MULTIPLIER_KO
 
-        # 映射到 [0.7, 1.5] 左右的乘法因子
         factor_h = 1.0 + diff * multiplier / 5.0
         factor_a = 1.0 - diff * multiplier / 5.0
         factor_h = clamp(factor_h, 0.5, 1.8)
@@ -151,23 +172,52 @@ class PredictionEngine:
         lam_h = lam_h * factor_h
         lam_a = lam_a * factor_a
 
-        # 小组赛碾压系数：评分差足够大时，强队 lambda 进一步放大
-        if self.group_stage and diff >= GROUP_STAGE_DOMINATION_THRESHOLD:
-            lam_h = lam_h * (1.0 + GROUP_STAGE_DOMINATION_BOOST)
-        if self.group_stage and diff <= -GROUP_STAGE_DOMINATION_THRESHOLD:
-            lam_a = lam_a * (1.0 + GROUP_STAGE_DOMINATION_BOOST)
+        # 碾压系数
+        if diff >= DOMINATION_THRESHOLD:
+            boost = DOMINATION_BOOST if self.group_stage else DOMINATION_BOOST * 0.6
+            lam_h = lam_h * (1.0 + boost)
+        if diff <= -DOMINATION_THRESHOLD:
+            boost = DOMINATION_BOOST if self.group_stage else DOMINATION_BOOST * 0.6
+            lam_a = lam_a * (1.0 + boost)
 
         return round(lam_h, 4), round(lam_a, 4)
 
     # ------------------------------------------------------------------
+    # 战术微调
+    # ------------------------------------------------------------------
     def _apply_tactical_bias(self, lam_h: float, lam_a: float,
                             home: Team, away: Team) -> Tuple[float, float]:
-        """根据战术分析微调 lambda（例如反击球队对控球球队时会提高客队进球）。"""
+        """根据战术分析微调 lambda。"""
         assert self.tactical_engine is not None
         adv_h = self.tactical_engine.tactical_advantage(home, away)
         adv_a = self.tactical_engine.tactical_advantage(away, home)
-        factor_h = 1.0 + adv_h * 0.06
-        factor_a = 1.0 + adv_a * 0.06
+        factor_h = 1.0 + adv_h * 0.08
+        factor_a = 1.0 + adv_a * 0.08
+        return round(lam_h * factor_h, 4), round(lam_a * factor_a, 4)
+
+    # ------------------------------------------------------------------
+    # [新增] 环境与心理修正
+    # ------------------------------------------------------------------
+    def _apply_environment_adjustment(
+        self, lam_h: float, lam_a: float,
+        home: Team, away: Team,
+        city: str = "", stage: str = "group",
+    ) -> Tuple[float, float]:
+        """根据环境与心理因素微调 lambda。
+
+        正 delta → 球队状态好 → lambda 提升
+        负 delta → 球队受影响 → lambda 降低
+        """
+        assert self.environment_engine is not None
+        env_h = self.environment_engine.total_environment_adjustment(
+            home, away, city=city, stage=stage)
+        env_a = self.environment_engine.total_environment_adjustment(
+            away, home, city=city, stage=stage)
+
+        # delta 映射到 lambda 乘数：[-1, +1] → [0.85, 1.15]
+        factor_h = 1.0 + env_h * 0.15
+        factor_a = 1.0 + env_a * 0.15
+
         return round(lam_h * factor_h, 4), round(lam_a * factor_a, 4)
 
     # ------------------------------------------------------------------
@@ -175,15 +225,17 @@ class PredictionEngine:
     # ------------------------------------------------------------------
     def compute_lambdas(self, home: Team, away: Team, *,
                         neutral: bool = False,
+                        city: str = "",
+                        stage: str = "group",
                         home_context: Optional[Dict[str, float]] = None,
                         away_context: Optional[Dict[str, float]] = None
                         ) -> Tuple[float, float, Dict[str, float]]:
         """返回 (lambda_home, lambda_away, intermediate_data)。"""
-        # 1. 基础 lambda
+        # 1. 基础 lambda（P0-1 + P1-1）
         lam_h, lam_a = self._base_lambda(home, away, neutral)
         data: Dict[str, float] = {"base_lambda_h": lam_h, "base_lambda_a": lam_a}
 
-        # 2. 评分
+        # 2. 评分修正
         assert self.rating_engine is not None
         home_score, away_score, details = self.rating_engine.rate_match(
             home, away, neutral=neutral,
@@ -198,16 +250,33 @@ class PredictionEngine:
 
         # 3. 战术微调
         lam_h, lam_a = self._apply_tactical_bias(lam_h, lam_a, home, away)
+        data["tactical_lambda_h"] = lam_h
+        data["tactical_lambda_a"] = lam_a
+
+        # 4. 环境与心理修正
+        lam_h, lam_a = self._apply_environment_adjustment(
+            lam_h, lam_a, home, away, city=city, stage=stage)
         data["final_lambda_h"] = lam_h
         data["final_lambda_a"] = lam_a
         data["momentum_delta_home"] = details["home"]["momentum_delta"]
         data["momentum_delta_away"] = details["away"]["momentum_delta"]
+
+        # 环境详情
+        assert self.environment_engine is not None
+        env_h_detail = self.environment_engine.total_environment_adjustment(
+            home, away, city=city, stage=stage)
+        env_a_detail = self.environment_engine.total_environment_adjustment(
+            away, home, city=city, stage=stage)
+        data["env_delta_home"] = env_h_detail
+        data["env_delta_away"] = env_a_detail
 
         return lam_h, lam_a, data
 
     # ------------------------------------------------------------------
     def predict_score(self, home: Team, away: Team, *,
                     neutral: bool = False,
+                    city: str = "",
+                    stage: str = "group",
                     home_context: Optional[Dict[str, float]] = None,
                     away_context: Optional[Dict[str, float]] = None,
                     ) -> Dict[str, object]:
@@ -217,30 +286,22 @@ class PredictionEngine:
             home:        主队。
             away:        客队。
             neutral:     是否中立场地。
-            home_context: 主队临场变量（伤停、疲劳、保级压力等）。
+            city:        比赛城市（用于环境因素）。
+            stage:       赛事阶段 ("group"/"round16"/"quarter"/"semi"/"final")。
+            home_context: 主队临场变量。
             away_context: 客队临场变量。
 
         Returns:
-            一个字典，包含:
-                - "lambda_home", "lambda_away": 最终 Poisson 参数
-                - "most_probable":             最可能比分 (h, a, p)
-                - "second_probable":           次可能比分 (h, a, p)
-                - "top_scores":                Top-N 比分列表
-                - "home_win", "draw", "away_win": 胜负平概率
-                - "over_25", "under_25":       大小球概率
-                - "home_rating", "away_rating": 两队综合评分
-                - "rating_diff":               评分差
-                - "momentum_delta_home/away":  动量修正值
-                - "score_probability_range":   95% 最可能比分区间描述
+            预测结果字典。
         """
         lam_h, lam_a, data = self.compute_lambdas(
-            home, away, neutral=neutral,
+            home, away, neutral=neutral, city=city, stage=stage,
             home_context=home_context, away_context=away_context)
 
-        # 计算胜负平
-        hw, draw, aw = outcome_probabilities(lam_h, lam_a)
-        # 最可能的比分
-        top = most_probable_scoreline(lam_h, lam_a, top_n=5)
+        # [P2-1] Dixon-Coles 修正
+        rho = self.dc_rho
+        hw, draw, aw = outcome_probabilities_dc(lam_h, lam_a, dc_rho=rho)
+        top = most_probable_scoreline(lam_h, lam_a, top_n=5, dc_rho=rho)
         over25, under25 = over_under_probability(lam_h, lam_a, 2.5)
 
         result: Dict[str, object] = {
@@ -259,22 +320,32 @@ class PredictionEngine:
             "rating_diff": data["rating_diff"],
             "momentum_delta_home": data.get("momentum_delta_home", 0.0),
             "momentum_delta_away": data.get("momentum_delta_away", 0.0),
-            "score_probability_range": self._describe_range(lam_h, lam_a),
+            "env_delta_home": data.get("env_delta_home", 0.0),
+            "env_delta_away": data.get("env_delta_away", 0.0),
+            "score_probability_range": self._describe_range(lam_h, lam_a, rho),
         }
         return result
 
     # ------------------------------------------------------------------
     def _describe_range(self, lam_h: float, lam_a: float,
+                        dc_rho: float = 0.0,
                         confidence: float = 0.95) -> List[str]:
         """返回概率覆盖至少 `confidence` 的比分区间描述。"""
-        # 收集所有比分概率，降序累加直到覆盖 confidence
         scores: List[Tuple[int, int, float]] = []
         for h in range(11):
             for a in range(11):
                 p = poisson_pmf(h, lam_h) * poisson_pmf(a, lam_a)
+                if dc_rho > 0:
+                    from football_predictor.utils.math_utils import _dixon_coles_tau
+                    p *= _dixon_coles_tau(h, a, lam_h, lam_a, dc_rho)
                 if p > 1e-4:
                     scores.append((h, a, p))
+        # 归一化
+        total_p = sum(s[2] for s in scores)
+        if total_p > 0:
+            scores = [(h, a, p / total_p) for h, a, p in scores]
         scores.sort(key=lambda t: t[2], reverse=True)
+
         total = 0.0
         ranges: List[str] = []
         for h, a, p in scores:
@@ -290,9 +361,12 @@ class PredictionEngine:
     # ------------------------------------------------------------------
     def predict_match(self, home: Team, away: Team, *,
                     neutral: bool = False,
+                    city: str = "",
+                    stage: str = "group",
                     ) -> "Prediction":
         """返回一个结构化对象（用于漂亮地打印）。"""
-        data = self.predict_score(home, away, neutral=neutral)
+        data = self.predict_score(home, away, neutral=neutral,
+                                  city=city, stage=stage)
         return Prediction(home=home, away=away, neutral=neutral, data=data)
 
 
@@ -320,7 +394,7 @@ class Prediction:
             f"   客胜  {d['away_win']*100:5.1f}%",
             f"  大球(>2.5) {d['over_25']*100:5.1f}%   小球 {d['under_25']*100:5.1f}%",
             "",
-            "最可能比分:",
+            "最可能比分 (Dixon-Coles 修正):",
         ]
         top_scores = d.get("top_scores", [])
         for rank, (h, a, p) in enumerate(top_scores, start=1):
@@ -328,4 +402,6 @@ class Prediction:
         lines.append("")
         lines.append(f"动量修正: 主队 {d['momentum_delta_home']:+.2f}  "
                      f"客队 {d['momentum_delta_away']:+.2f}")
+        lines.append(f"环境修正: 主队 {d.get('env_delta_home', 0):+.3f}  "
+                     f"客队 {d.get('env_delta_away', 0):+.3f}")
         return "\n".join(lines)

@@ -79,10 +79,21 @@ class TacticalEngine:
 
     # ------------------------------------------------------------------
     def _get_style(self, team: Team) -> Optional[str]:
-        """根据球队本身信息推断战术风格。"""
+        """根据球队本身信息推断战术风格。
+
+        优先级：
+            1. team_styles 字典中显式设置的风格（通过 set_team_style 注入）
+            2. Team 对象自身的 style 属性（由数据层 build_team 写入）
+            3. 启发式推断（基于阵型与 Elo，仅作为兜底）
+        """
+        # 1) 显式注入的风格优先级最高
         if team.name in self.team_styles:
             return self.team_styles[team.name]
-        # 简单启发式：有梅西型球员则控球主导
+        # 2) 读取 Team 对象上由数据层写入的 style 属性
+        team_style = getattr(team, "style", "")
+        if team_style:
+            return team_style
+        # 3) 启发式兜底（仅当 style 未指定时）
         if team.formation in ("4-3-3", "3-4-3") and team.elo_rating >= 1900:
             return "possession"
         if team.formation in ("5-3-2", "4-5-1"):

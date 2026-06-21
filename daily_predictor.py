@@ -196,15 +196,19 @@ WORLD_CUP_SCHEDULE_BEIJING: List[Tuple[str, str, str, str, str, str]] = [
 
 
 # ---------------------------------------------------------------------------
-# 预测引擎初始化
+# 预测引擎初始化 (v4.0)
 # ---------------------------------------------------------------------------
 RATING = RatingEngine()
 MOMENTUM = MomentumEngine()
 TACTICAL = TacticalEngine()
-# 默认引擎（淘汰赛模式）
-PREDICTION_KO = PredictionEngine(rating_engine=RATING, tactical_engine=TACTICAL, momentum_engine=MOMENTUM, group_stage=False)
+# 淘汰赛引擎（保守模式）
+PREDICTION_KO = PredictionEngine(
+    rating_engine=RATING, tactical_engine=TACTICAL, momentum_engine=MOMENTUM,
+    group_stage=False)
 # 小组赛引擎（激进模式）
-PREDICTION_GROUP = PredictionEngine(rating_engine=RATING, tactical_engine=TACTICAL, momentum_engine=MOMENTUM, group_stage=True)
+PREDICTION_GROUP = PredictionEngine(
+    rating_engine=RATING, tactical_engine=TACTICAL, momentum_engine=MOMENTUM,
+    group_stage=True)
 
 
 def _parse_time(time_str: str) -> int:
@@ -218,6 +222,37 @@ def is_group_stage(match_date_str: str) -> bool:
     group_start = date(2026, 6, 11)
     group_end = date(2026, 6, 27)
     return group_start <= match_date <= group_end
+
+
+def get_group_round(match_date_str: str) -> int:
+    """根据日期推断小组赛轮次。
+
+    6月11-15日: 第1轮
+    6月16-20日: 第2轮
+    6月21-27日: 第3轮
+    """
+    match_date = datetime.strptime(match_date_str, "%Y-%m-%d").date()
+    if match_date <= date(2026, 6, 15):
+        return 1
+    elif match_date <= date(2026, 6, 20):
+        return 2
+    else:
+        return 3
+
+
+def get_stage_name(match_date_str: str) -> str:
+    """根据日期返回赛事阶段名称。"""
+    match_date = datetime.strptime(match_date_str, "%Y-%m-%d").date()
+    if match_date <= date(2026, 6, 27):
+        return "group"
+    elif match_date <= date(2026, 7, 3):
+        return "round16"
+    elif match_date <= date(2026, 7, 11):
+        return "quarter"
+    elif match_date <= date(2026, 7, 15):
+        return "semi"
+    else:
+        return "final"
 
 
 def get_matches_for_period(
@@ -251,13 +286,16 @@ def get_matches_for_period(
     return matches
 
 
-def predict_match(home_name: str, away_name: str, match_date_str: str = "") -> dict:
+def predict_match(home_name: str, away_name: str,
+                  match_date_str: str = "",
+                  city: str = "") -> dict:
     """对一场比赛进行预测，返回结构化结果。
 
     Args:
         home_name: 主队名称
         away_name: 客队名称
         match_date_str: 比赛日期 (YYYY-MM-DD)，用于判断小组赛/淘汰赛
+        city: 比赛城市（用于环境因素）
     """
     # 处理占位符（淘汰赛阶段）
     if "胜者" in home_name or "负者" in home_name or "组" in home_name:
@@ -280,11 +318,18 @@ def predict_match(home_name: str, away_name: str, match_date_str: str = "") -> d
             "note": f"球队数据缺失: {home_name if home is None else away_name}",
         }
 
-    # 根据日期选择引擎：小组赛用激进模式，淘汰赛用保守模式
-    engine = PREDICTION_GROUP if (match_date_str and is_group_stage(match_date_str)) else PREDICTION_KO
+    # 根据日期选择引擎和参数
+    is_group = match_date_str and is_group_stage(match_date_str)
+    stage = get_stage_name(match_date_str) if match_date_str else "group"
 
-    # 执行预测
-    prediction = engine.predict_match(home, away, neutral=True)
+    if is_group:
+        engine = PREDICTION_GROUP
+        engine.group_round = get_group_round(match_date_str)
+    else:
+        engine = PREDICTION_KO
+
+    # 执行预测（传入城市和阶段）
+    prediction = engine.predict_match(home, away, neutral=True, city=city, stage=stage)
     result = prediction.data
 
     # 格式化输出
@@ -309,6 +354,10 @@ def predict_match(home_name: str, away_name: str, match_date_str: str = "") -> d
         "second_prob": round(second[2] * 100, 2),
         "momentum_home": result.get("momentum_delta_home", 0),
         "momentum_away": result.get("momentum_delta_away", 0),
+        "env_home": result.get("env_delta_home", 0),
+        "env_away": result.get("env_delta_away", 0),
+        "lambda_home": round(result.get("lambda_home", 0), 3),
+        "lambda_away": round(result.get("lambda_away", 0), 3),
     }
 
 
@@ -344,8 +393,8 @@ def generate_report(base_date: date) -> str:
             lines.append(f"  📅 {d} {weekday}")
             lines.append(f"{'─' * 70}")
 
-        # 预测（传入日期以判断小组赛/淘汰赛）
-        pred = predict_match(h, a, match_date_str=d)
+        # 预测（传入日期和城市以判断阶段和环境因素）
+        pred = predict_match(h, a, match_date_str=d, city=c)
 
         if pred["status"] == "placeholder":
             lines.append(f"\n  ⏰ {t}  {h} vs {a}")
@@ -374,6 +423,7 @@ def generate_report(base_date: date) -> str:
         lines.append(f"\n  ⏰ {t}  {h} vs {a}")
         lines.append(f"     📍 {v} ({c})")
         lines.append(f"     📊 评分: {h} {pred['home_rating']} vs {pred['away_rating']} {a} (差: {pred['rating_diff']:+.2f})")
+        lines.append(f"     📊 λ值: {h} {pred['lambda_home']} | {a} {pred['lambda_away']}")
         lines.append(f"     🎯 倾向: {tendency} | 信心: {confidence}")
         lines.append(f"     📈 概率: 主胜 {hw}% | 平局 {dr}% | 客胜 {aw}%")
         lines.append(f"     ⚽ 比分: 最可能 {pred['most_probable']} ({pred['most_prob']}%) | 次可能 {pred['second_probable']} ({pred['second_prob']}%)")
@@ -392,6 +442,20 @@ def generate_report(base_date: date) -> str:
             elif ma < -0.3:
                 effects.append(f"{a} 动力↓")
             lines.append(f"     💡 动量: {', '.join(effects)}")
+
+        # 环境修正提示
+        eh, ea = pred.get("env_home", 0), pred.get("env_away", 0)
+        if abs(eh) > 0.1 or abs(ea) > 0.1:
+            env_effects = []
+            if eh > 0.1:
+                env_effects.append(f"{h} 环境+")
+            elif eh < -0.1:
+                env_effects.append(f"{h} 环境-")
+            if ea > 0.1:
+                env_effects.append(f"{a} 环境+")
+            elif ea < -0.1:
+                env_effects.append(f"{a} 环境-")
+            lines.append(f"     🌍 环境: {', '.join(env_effects)}")
 
     # 报告尾
     lines.append("")
