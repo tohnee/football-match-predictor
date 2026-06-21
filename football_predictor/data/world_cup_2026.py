@@ -168,6 +168,46 @@ TEAM_RAW: List[Dict[str, object]] = [
         "form": 5, "market_value": 280, "formation": "4-4-2",
         "key_players": [("莱万多夫斯基", "FW", 86, 37)],
     },
+    {
+        "name": "瑞典", "conf": "UEFA", "elo_rating": 1805, "squad_depth": 6,
+        "form": 6, "market_value": 300, "formation": "4-4-2",
+        "key_players": [("伊萨克", "FW", 84, 26)],
+    },
+    {
+        "name": "苏格兰", "conf": "UEFA", "elo_rating": 1780, "squad_depth": 5,
+        "form": 6, "market_value": 220, "formation": "3-5-2",
+        "key_players": [("麦克托米奈", "MF", 82, 29), ("罗伯逊", "DF", 83, 32)],
+    },
+    {
+        "name": "挪威", "conf": "UEFA", "elo_rating": 1770, "squad_depth": 5,
+        "form": 6, "market_value": 350, "formation": "4-4-2",
+        "key_players": [("哈兰德", "FW", 91, 25), ("厄德高", "MF", 87, 27)],
+    },
+    {
+        "name": "土耳其", "conf": "UEFA", "elo_rating": 1820, "squad_depth": 6,
+        "form": 7, "market_value": 380, "formation": "4-2-3-1",
+        "key_players": [("居勒尔", "MF", 83, 21), ("伊尔迪兹", "FW", 82, 20)],
+    },
+    {
+        "name": "威尔士", "conf": "UEFA", "elo_rating": 1700, "squad_depth": 4,
+        "form": 5, "market_value": 120, "formation": "3-4-3",
+        "key_players": [("约翰逊", "FW", 79, 24)],
+    },
+    {
+        "name": "捷克", "conf": "UEFA", "elo_rating": 1760, "squad_depth": 5,
+        "form": 5, "market_value": 180, "formation": "4-2-3-1",
+        "key_players": [("绍切克", "MF", 82, 31)],
+    },
+    {
+        "name": "奥地利", "conf": "UEFA", "elo_rating": 1840, "squad_depth": 6,
+        "form": 7, "market_value": 350, "formation": "4-2-3-1",
+        "key_players": [("萨比策", "MF", 83, 32), ("阿瑙托维奇", "FW", 80, 37)],
+    },
+    {
+        "name": "波黑", "conf": "UEFA", "elo_rating": 1680, "squad_depth": 4,
+        "form": 4, "market_value": 90, "formation": "3-5-2",
+        "key_players": [("哲科", "FW", 81, 40)],
+    },
 
     # ======== 非洲 ========
     {
@@ -198,6 +238,246 @@ TEAM_RAW: List[Dict[str, object]] = [
     {
         "name": "南非", "conf": "CAF", "elo_rating": 1650, "squad_depth": 4,
         "form": 5, "market_value": 60, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "阿尔及利亚", "conf": "CAF", "elo_rating": 1750, "squad_depth": 5,
+        "form": 5, "market_value": 150, "formation": "4-3-3",
+        "key_players": [("马赫雷斯", "FW", 83, 35)],
+    },
+    {
+        "name": "突尼斯", "conf": "CAF", "elo_rating": 1740, "squad_depth": 5,
+        "form": 5, "market_value": 120, "formation": "4-3-3",
+        "key_players": [],
+    },
+    {
+        "name": "加纳", "conf": "CAF", "elo_rating": 1720, "squad_depth": 5,
+        "form": 5, "market_value": 180, "formation": "4-3-3",
+        "key_players": [("库杜斯", "MF", 83, 25)],
+    },
+    {
+        "name": "喀麦隆", "conf": "CAF", "elo_rating": 1710, "squad_depth": 5,
+        "form": 5, "market_value": 160, "formation": "4-3-3",
+        "key_players": [("姆贝乌莫", "FW", 82, 26)],
+    },
+    {
+        "name": "马里", "conf": "CAF", "elo_rating": 1690, "squad_depth": 4,
+        "form": 5, "market_value": 100, "formation": "4-3-3",
+        "key_players": [],
+    },
+    {
+        "name": "布基纳法索", "conf": "CAF", "elo_rating": 1640, "squad_depth": 4,
+        "form": 4, "market_value": 50, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "几内亚", "conf": "CAF", "elo_rating": 1620, "squad_depth": 3,
+        "form": 4, "market_value": 40, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "赞比亚", "conf": "CAF", "elo_rating": 1580, "squad_depth": 3,
+        "form": 4, "market_value": 30, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "津巴布韦", "conf": "CAF", "elo_rating": 1550, "squad_depth": 3,
+        "form": 4, "market_value": 20, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "安哥拉", "conf": "CAF", "elo_rating": 1600, "squad_depth": 3,
+        "form": 4, "market_value": 30, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "莫桑比克", "conf": "CAF", "elo_rating": 1500, "squad_depth": 3,
+        "form": 3, "market_value": 15, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "马达加斯加", "conf": "CAF", "elo_rating": 1520, "squad_depth": 3,
+        "form": 3, "market_value": 15, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "多哥", "conf": "CAF", "elo_rating": 1480, "squad_depth": 2,
+        "form": 3, "market_value": 10, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "贝宁", "conf": "CAF", "elo_rating": 1490, "squad_depth": 2,
+        "form": 3, "market_value": 10, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "利比亚", "conf": "CAF", "elo_rating": 1530, "squad_depth": 3,
+        "form": 3, "market_value": 15, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "苏丹", "conf": "CAF", "elo_rating": 1450, "squad_depth": 2,
+        "form": 3, "market_value": 8, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "赤道几内亚", "conf": "CAF", "elo_rating": 1510, "squad_depth": 3,
+        "form": 3, "market_value": 12, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "科摩罗", "conf": "CAF", "elo_rating": 1430, "squad_depth": 2,
+        "form": 3, "market_value": 5, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "莱索托", "conf": "CAF", "elo_rating": 1380, "squad_depth": 2,
+        "form": 2, "market_value": 3, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "斯威士兰", "conf": "CAF", "elo_rating": 1360, "squad_depth": 2,
+        "form": 2, "market_value": 3, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "博茨瓦纳", "conf": "CAF", "elo_rating": 1420, "squad_depth": 2,
+        "form": 3, "market_value": 5, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "纳米比亚", "conf": "CAF", "elo_rating": 1410, "squad_depth": 2,
+        "form": 3, "market_value": 5, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "中非共和国", "conf": "CAF", "elo_rating": 1400, "squad_depth": 2,
+        "form": 2, "market_value": 4, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "乍得", "conf": "CAF", "elo_rating": 1370, "squad_depth": 2,
+        "form": 2, "market_value": 3, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "吉布提", "conf": "CAF", "elo_rating": 1320, "squad_depth": 1,
+        "form": 2, "market_value": 2, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "索马里", "conf": "CAF", "elo_rating": 1300, "squad_depth": 1,
+        "form": 2, "market_value": 2, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "厄立特里亚", "conf": "CAF", "elo_rating": 1310, "squad_depth": 1,
+        "form": 2, "market_value": 2, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "南苏丹", "conf": "CAF", "elo_rating": 1350, "squad_depth": 2,
+        "form": 2, "market_value": 3, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "佛得角", "conf": "CAF", "elo_rating": 1630, "squad_depth": 4,
+        "form": 5, "market_value": 35, "formation": "4-3-3",
+        "key_players": [],
+    },
+    {
+        "name": "几内亚比绍", "conf": "CAF", "elo_rating": 1460, "squad_depth": 2,
+        "form": 3, "market_value": 6, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "圣多美和普林西比", "conf": "CAF", "elo_rating": 1250, "squad_depth": 1,
+        "form": 2, "market_value": 1, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "塞舌尔", "conf": "CAF", "elo_rating": 1280, "squad_depth": 1,
+        "form": 2, "market_value": 1, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "毛里求斯", "conf": "CAF", "elo_rating": 1390, "squad_depth": 2,
+        "form": 3, "market_value": 4, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "毛里塔尼亚", "conf": "CAF", "elo_rating": 1540, "squad_depth": 3,
+        "form": 3, "market_value": 15, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "冈比亚", "conf": "CAF", "elo_rating": 1560, "squad_depth": 3,
+        "form": 4, "market_value": 20, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "塞拉利昂", "conf": "CAF", "elo_rating": 1470, "squad_depth": 2,
+        "form": 3, "market_value": 6, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "利比里亚", "conf": "CAF", "elo_rating": 1440, "squad_depth": 2,
+        "form": 3, "market_value": 5, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "尼日尔", "conf": "CAF", "elo_rating": 1420, "squad_depth": 2,
+        "form": 3, "market_value": 4, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "布隆迪", "conf": "CAF", "elo_rating": 1480, "squad_depth": 2,
+        "form": 3, "market_value": 5, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "卢旺达", "conf": "CAF", "elo_rating": 1500, "squad_depth": 2,
+        "form": 3, "market_value": 6, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "乌干达", "conf": "CAF", "elo_rating": 1520, "squad_depth": 3,
+        "form": 3, "market_value": 8, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "坦桑尼亚", "conf": "CAF", "elo_rating": 1510, "squad_depth": 2,
+        "form": 3, "market_value": 6, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "肯尼亚", "conf": "CAF", "elo_rating": 1530, "squad_depth": 3,
+        "form": 3, "market_value": 8, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "埃塞俄比亚", "conf": "CAF", "elo_rating": 1490, "squad_depth": 2,
+        "form": 3, "market_value": 5, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "马拉维", "conf": "CAF", "elo_rating": 1460, "squad_depth": 2,
+        "form": 3, "market_value": 5, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "刚果(金)", "conf": "CAF", "elo_rating": 1670, "squad_depth": 4,
+        "form": 5, "market_value": 80, "formation": "4-3-3",
+        "key_players": [],
+    },
+    {
+        "name": "刚果(布)", "conf": "CAF", "elo_rating": 1570, "squad_depth": 3,
+        "form": 4, "market_value": 20, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "加蓬", "conf": "CAF", "elo_rating": 1600, "squad_depth": 3,
+        "form": 4, "market_value": 25, "formation": "4-4-2",
         "key_players": [],
     },
 
@@ -233,12 +513,42 @@ TEAM_RAW: List[Dict[str, object]] = [
         "form": 5, "market_value": 50, "formation": "4-4-2",
         "key_players": [],
     },
+    {
+        "name": "卡塔尔", "conf": "AFC", "elo_rating": 1680, "squad_depth": 4,
+        "form": 5, "market_value": 70, "formation": "4-3-3",
+        "key_players": [("阿菲夫", "FW", 80, 29)],
+    },
+    {
+        "name": "约旦", "conf": "AFC", "elo_rating": 1650, "squad_depth": 4,
+        "form": 5, "market_value": 40, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "伊拉克", "conf": "AFC", "elo_rating": 1640, "squad_depth": 4,
+        "form": 5, "market_value": 45, "formation": "4-4-2",
+        "key_players": [],
+    },
 
     # ======== 大洋洲 ========
     {
         "name": "新西兰", "conf": "OFC", "elo_rating": 1595, "squad_depth": 3,
         "form": 4, "market_value": 30, "formation": "4-4-2",
         "key_players": [("克里斯-伍德", "FW", 75, 34)],
+    },
+    {
+        "name": "库拉索", "conf": "CONCACAF", "elo_rating": 1580, "squad_depth": 3,
+        "form": 4, "market_value": 20, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "海地", "conf": "CONCACAF", "elo_rating": 1600, "squad_depth": 3,
+        "form": 4, "market_value": 25, "formation": "4-4-2",
+        "key_players": [],
+    },
+    {
+        "name": "巴拉圭", "conf": "CONMEBOL", "elo_rating": 1760, "squad_depth": 5,
+        "form": 5, "market_value": 200, "formation": "4-4-2",
+        "key_players": [],
     },
 ]
 
