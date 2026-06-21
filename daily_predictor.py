@@ -260,27 +260,25 @@ def get_matches_for_period(
     period: str = "tonight_early_morning_morning"
 ) -> List[Tuple[str, str, str, str, str, str]]:
     """
-    获取指定日期"今天+明天"的比赛。
+    获取"今晚 + 次日凌晨 + 次日上午"的比赛。
 
-    世界杯期间比赛均在北京时间凌晨到上午进行（00:00-12:00）。
-    定时任务每晚18:00运行时，"今天"的比赛指 base_date 当天 00:00-12:00 的场次，
-    "明天"的比赛指 base_date + 1 天 00:00-12:00 的场次。
+    重要：赛程表中的日期是竞彩"比赛日"标注，凌晨比赛归到前一天。
+    例如赛程表"6/21 00:00"的实际北京时间是6/22 00:00。
+
+    因此当 base_date=6/21 下午18:00运行时：
+      - 赛程表日期=base_date，时间 18:00-23:59 → "今晚"的比赛（实际就是当天晚上）
+      - 赛程表日期=base_date，时间 00:00-12:00 → "次日凌晨+次日上午"的比赛
+        （实际是 base_date+1 的凌晨上午，但竞彩归到 base_date）
     """
     matches: List[Tuple[str, str, str, str, str, str]] = []
 
-    # "今天"的比赛 (base_date, 00:00-12:00)
     for d, t, h, a, v, c in WORLD_CUP_SCHEDULE_BEIJING:
         match_date = datetime.strptime(d, "%Y-%m-%d").date()
+        if match_date != base_date:
+            continue
         hour = _parse_time(t)
-        if match_date == base_date and 0 <= hour <= 12:
-            matches.append((d, t, h, a, v, c))
-
-    # "明天"的比赛 (base_date + 1, 00:00-12:00)
-    next_day = base_date + timedelta(days=1)
-    for d, t, h, a, v, c in WORLD_CUP_SCHEDULE_BEIJING:
-        match_date = datetime.strptime(d, "%Y-%m-%d").date()
-        hour = _parse_time(t)
-        if match_date == next_day and 0 <= hour <= 12:
+        # 今晚(18:00-23:59) + 次日凌晨上午(00:00-12:00)
+        if 0 <= hour <= 12 or 18 <= hour <= 23:
             matches.append((d, t, h, a, v, c))
 
     return matches
@@ -369,7 +367,7 @@ def generate_report(base_date: date) -> str:
     lines.append("=" * 70)
     lines.append("  2026 美加墨世界杯 - 每日比赛预测报告")
     lines.append(f"  生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (北京时间)")
-    lines.append(f"  预测范围: {base_date.strftime('%Y-%m-%d')} (今天) + {base_date + timedelta(days=1)} (明天)")
+    lines.append(f"  预测范围: {base_date.strftime('%Y-%m-%d')} 今晚 → {base_date + timedelta(days=1)} 凌晨/上午")
     lines.append("=" * 70)
     lines.append("")
 
