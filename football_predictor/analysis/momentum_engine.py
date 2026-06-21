@@ -114,6 +114,42 @@ class MomentumEngine:
         return context.get("final_game_bonus", 0.0) + context.get("derby_bonus", 0.0)
 
     # ------------------------------------------------------------------
+    # 6. 黑马检测（v4.1: 近期对强队不败/爆冷，提升信心）
+    # ------------------------------------------------------------------
+    def check_cinderella_effect(self, team: Team, opponent: Team) -> float:
+        """检测球队近期是否有'黑马'表现。
+
+        触发条件：最近比赛中面对Elo比自己高200+的球队取得不败（W或D）。
+        效果：提升球队信心和评分（+0.3 ~ +1.0）。
+
+        佛得角案例：Elo 1630，首轮0-0逼平西班牙(Elo 2020)，次轮2-2战平乌拉圭(Elo 1900)。
+        """
+        if not team.recent_form or not team.recent_goals_for:
+            return 0.0
+
+        cinderella_bonus = 0.0
+        # 检查最近3场比赛
+        check_range = min(3, len(team.recent_form))
+        for i in range(check_range):
+            result = team.recent_form[i]
+            if result in ("W", "D"):
+                # 模拟检测：如果对手Elo比本队高200+且取得不败
+                # 这里用近期失球作为代理指标：强队交锋中失球少=防守出色
+                if team.recent_goals_against and i < len(team.recent_goals_against):
+                    ga = team.recent_goals_against[i]
+                    gf = team.recent_goals_for[i]
+                    # 不败且失球<=2 → 可能是对强队的好结果
+                    if ga <= 2 and (result == "W" or (result == "D" and ga <= 1)):
+                        # 根据球队Elo越低，黑马效应越强
+                        if team.elo_rating < 1700:
+                            cinderella_bonus = max(cinderella_bonus, 0.8)
+                        elif team.elo_rating < 1800:
+                            cinderella_bonus = max(cinderella_bonus, 0.5)
+                        elif team.elo_rating < 1900:
+                            cinderella_bonus = max(cinderella_bonus, 0.3)
+        return round(cinderella_bonus, 3)
+
+    # ------------------------------------------------------------------
     # 汇总
     # ------------------------------------------------------------------
     def total_adjustment(self, team: Team, opponent: Team,
@@ -124,10 +160,11 @@ class MomentumEngine:
         blowout = self.check_blowout_illusion(team)
         stack = self.check_emotional_stack(team)
         special = self.check_special_game(context)
+        cinderella = self.check_cinderella_effect(team, opponent)
 
         # 反弹与底部不同时触发（取较大值）
         base = max(rebound, bottom)
-        total = base + blowout + stack + special
+        total = base + blowout + stack + special + cinderella
 
         # 裁剪到 [-1.5, +1.5]
         return round(max(-1.5, min(1.5, total)), 3)

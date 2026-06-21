@@ -410,19 +410,26 @@ def generate_report(base_date: date) -> str:
         hw, dr, aw = pred["home_win"], pred["draw"], pred["away_win"]
         if hw > aw and hw > dr:
             tendency = f"🏠 主胜 {hw}%"
-            confidence = "高" if hw > 60 else "中" if hw > 45 else "低"
+            confidence = "极高" if hw > 70 else "高" if hw > 55 else "中" if hw > 45 else "低"
         elif aw > hw and aw > dr:
             tendency = f"✈️ 客胜 {aw}%"
-            confidence = "高" if aw > 60 else "中" if aw > 45 else "低"
+            confidence = "极高" if aw > 70 else "高" if aw > 55 else "中" if aw > 45 else "低"
         else:
             tendency = f"🤝 平局 {dr}%"
             confidence = "中"
+
+        # 信心低时添加风险提示
+        risk_note = ""
+        if confidence in ("低",):
+            risk_note = " ⚠️ 高风险场次，胜负悬念大"
+        elif confidence == "中" and max(hw, aw, dr) < 50:
+            risk_note = " ⚠️ 接近五五开，谨慎参考"
 
         lines.append(f"\n  ⏰ {t}  {h} vs {a}")
         lines.append(f"     📍 {v} ({c})")
         lines.append(f"     📊 评分: {h} {pred['home_rating']} vs {pred['away_rating']} {a} (差: {pred['rating_diff']:+.2f})")
         lines.append(f"     📊 λ值: {h} {pred['lambda_home']} | {a} {pred['lambda_away']}")
-        lines.append(f"     🎯 倾向: {tendency} | 信心: {confidence}")
+        lines.append(f"     🎯 倾向: {tendency} | 信心: {confidence}{risk_note}")
         lines.append(f"     📈 概率: 主胜 {hw}% | 平局 {dr}% | 客胜 {aw}%")
         lines.append(f"     ⚽ 比分: 最可能 {pred['most_probable']} ({pred['most_prob']}%) | 次可能 {pred['second_probable']} ({pred['second_prob']}%)")
         lines.append(f"     🔮 大小球: {'大' if pred['over_25'] > 50 else '小'}2.5 ({pred['over_25']}%)")

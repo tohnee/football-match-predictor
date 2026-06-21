@@ -53,18 +53,20 @@ GROUP_STAGE_NEUTRAL_GOALS = 1.60
 RATING_MULTIPLIER_KO = 0.12       # 淘汰赛
 RATING_MULTIPLIER_GROUP = 0.16    # 小组赛
 
-# 碾压系数
+# 碾压系数（v4.1: 提高上限，支持梯度碾压）
 DOMINATION_THRESHOLD = 1.5
-DOMINATION_BOOST = 0.25
+DOMINATION_BOOST = 0.25           # 评分差 1.5-2.5
+DOMINATION_BOOST_HEAVY = 0.40     # 评分差 2.5+（超级碾压，如西班牙vs沙特）
+DOMINATION_HEAVY_THRESHOLD = 2.5
 
 # Dixon-Coles 修正参数
 DC_RHO = 0.03
 
-# 小组赛轮次系数
+# 小组赛轮次系数（v4.1: 第2轮实际更开放）
 GROUP_ROUND_MULTIPLIER = {
-    1: 0.90,   # 第1轮：试探，偏保守
-    2: 1.00,   # 第2轮：正常
-    3: 1.10,   # 第3轮：已出线轮换/已淘汰放手一搏，更开放
+    1: 0.92,   # 第1轮：试探，偏保守
+    2: 1.08,   # 第2轮：必须抢分，更开放（实际赛果验证）
+    3: 1.12,   # 第3轮：已出线轮换/已淘汰放手一搏，最开放
 }
 
 
@@ -172,11 +174,18 @@ class PredictionEngine:
         lam_h = lam_h * factor_h
         lam_a = lam_a * factor_a
 
-        # 碾压系数
-        if diff >= DOMINATION_THRESHOLD:
+        # 碾压系数（v4.1: 梯度碾压）
+        if diff >= DOMINATION_HEAVY_THRESHOLD:
+            # 超级碾压（如西班牙vs沙特）：大幅提升强队lambda
+            boost = DOMINATION_BOOST_HEAVY if self.group_stage else DOMINATION_BOOST_HEAVY * 0.6
+            lam_h = lam_h * (1.0 + boost)
+        elif diff >= DOMINATION_THRESHOLD:
             boost = DOMINATION_BOOST if self.group_stage else DOMINATION_BOOST * 0.6
             lam_h = lam_h * (1.0 + boost)
-        if diff <= -DOMINATION_THRESHOLD:
+        if diff <= -DOMINATION_HEAVY_THRESHOLD:
+            boost = DOMINATION_BOOST_HEAVY if self.group_stage else DOMINATION_BOOST_HEAVY * 0.6
+            lam_a = lam_a * (1.0 + boost)
+        elif diff <= -DOMINATION_THRESHOLD:
             boost = DOMINATION_BOOST if self.group_stage else DOMINATION_BOOST * 0.6
             lam_a = lam_a * (1.0 + boost)
 
